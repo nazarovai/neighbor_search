@@ -1,0 +1,113 @@
+Readme for Neighbor search script.
+Aleksei Nazarov, University of Massachusetts Amherst.
+
+This script is to be run in the freeware statistics-oriented software R, version 2.14.1.
+The packages "mclust" and "combinat" must be installed to run the code.
+
+The purpose of this script is to simulate a human learner's induction of phonotactic constraints and phonological classes through machine learning.
+The tools that are used for this end are the Maximum Entropy statistical model as applied to phonological grammar, and the mixture of Gaussians approach to clustering.
+
+These tools are applied to a case study in which some phonotactic constraints are best represented by using a class of segments (phonological feature),
+and some are best represented by using a single segment.
+
+The script consists of several parts:
+
+- Preliminary specifications (Preliminaries, User-defined vars)
+
+- Specification of the learning problem (Representational space, Phonetic distance, Cluster setup, Constraint definitions)
+
+- The mechanism of the Maximum Entropy model (Maximum gain computation, Maximum entropy calculation)
+
+- A set of procedures that guide search through the constraint space (Constraint space search)
+
+- The looped part of the script, in which the actual constraint and phonological class induction happens
+		(Random constraint selection, Neighbor search, Clustering, Update grammar, Update clusters, Compute intersection of feature classes, Update constraints)
+
+In this document, I will briefly mention some implementational and conceptual choices I made for this script - which I will do per section of the script in which these are relevant.
+
+	Representational space
+
+I have decided, for the toy language case to which I apply this script, to only consider representations of the shape CVCVC. This is because considering, for instance, all 5-segment representations would make sigma so large that computing gain values would take very long.
+For larger omega, it might be useful to compute gain values over a sample (i.e., take a sample from omega and compute gain values over that).
+The "observed" forms are ALL forms that are phonotactically allowed in this made-up language. When I apply the algorithm to English, I will use actual attested words as the "observed" set.
+
+"Sigma" stands for the set of atomic segment categories allowed in the language ("q" stands for engma).
+
+The toy language I'm considering has the following phonotactic restrictions:
+
+- word-initial nasals are banned
+- labials are banned in the context [u_u]
+- word-final "m" is banned
+
+	Phonetic distance
+
+Instead of using some empirical measure of perceptual distance between sounds, I used a very simplified, and even somewhat arbitrary metric:
+
+- for consonants, 1 penalty is incurred for changing nasality (m and b have a distance of 1), voicing (p and b have a distance of 1), or going one step back or forward in the mouth in terms of place of articulation (p and t have a distance of 1, p and k have a distance of 2).
+- the distance between any consonant and any vowel is 5
+- the distance among vowels is always 3
+
+However, this table can easily be updated with more principled numbers - since the algorithm only cares about there being SOME numbers in this table.
+
+	Constraint definitions
+
+Constraints are defined as a 4-tuple of "valence", and three slots which stand for three consecutive segments; the final slot may be empty.
+"Valence" stands for whether a constraint assigns rewards or penalties, and is indicated by "1" or "-1". Positive (reward-assigning) constraints will be important in analyzing English phonotactics.
+
+	Maximum gain computation
+
+Maximum gain is computed as in Della Pietra's article, but with the restriction that the weight of the constraint under consideration may only be positive - this is because the MaxEnt grammar may also only assign constraints a positive weight.
+If the new constraint's weight is not restricted to positive values, the difference between reward-assigning and penalty-assigning constraints is disregarded by the gain value computation.
+
+
+	Constraint space search
+
+These are two functions which find phonetically neighboring constraints given a prototype constraint by depth-first search. The "phonetic distance threshold" can be set in the top portion of the script - and it is standardly set to 1. Given the phonetic distance metric, this means that only consonants can be altered to create neighboring constraints.
+This choice was made because the problems I will be considering are specifically about classes of consonants. However, with a different segment similarity measure (encoded in the phonetic distance matrix), this can be changed.
+
+To accomodate a larger "omega" (representational space; see comments for "Representational space" section), a sample can be taken from "omega" by decreasing the value of the variable sample.size .
+
+All sections of the script after "Constraint space search" are looped; the number of iterations can be specified in the top section of the script.
+
+	Random constraint selection
+
+This part of the script keeps selecting random constraints until it finds one that has a gain value that is at or higher than the "gain value threshold" (which can be specified in the top portion of the script - 0.01 works well as a cutoff value).
+Constraints are referred to by row number in the big "constraints" data frame, and constraints that have been considered but were found to have too small a gain value are stored in the "trash" variable, and every time a constraint is selected at random the algorithm first looks whether it is in the "trash" vector - if it's in the trash vector, no gain value will be computed.
+
+One problem that still needs fixing is that sometimes constraints are deemed to have a high enough gain value but then these constraints are never assigned any weight by the grammar - these constraints often seem to be such that they are less specific versions of constraints which are already in the grammar. I will investigate what the problem is there.
+
+
+
+	Clustering
+
+In the clustering analysis a noise vector was added to each row of the contexts frame.
+This was because the mixture of gaussians model doesn't find two clusters if the two clusters have the exact same values in them.
+For instance, 0 0 0 0 0 0 0 0 0 1 1 1 would yield an analysis with only one Gaussian, even though there are clearly two clusters there.
+The random vector will space these observations apart and make the algorithm find two clusters, but the noise is of a much smaller order of magnitude than the differences between clusters will typically be.
+
+I force an analysis with two equal-variance Gaussians onto the data - after checking whether such an analysis gives computable results at all (hence the if-clause with "!is.na(mclustBIC(to_be_clustered,G=1:2,modelNames="E")[2,]").
+
+When this analysis has been performed, the segments selected by the component with the higher mean are taken to be a cluster (whenever more than one segment is selected by the higher-mean component).
+
+All clusters that are found in this way are stored in a "clusters matrix" - in which each hypothesized phonological class is represented by a random combination of two capital letters.
+Every time a new instance of a previously established cluster 
+
+(criterion: a similarity of .9 by the formula sum( clust1/sqrt(sum(clust1^2)) * clust2/sqrt(sum(clust2^2)) ) )
+
+ is found, the likelihood of segments belonging to that class is separately stored in clusters matrix, so that if the first instance of finding a certain phonological class gave a wrong impression of what segments should belong to that cluster, a second instance of finding that cluster could correct this.
+
+The statement "print(clusters_matrix)" can be un-commented to see what the clusters matrix looks like at different stages of inducing phonological classes.
+
+
+From these clusters, sets of segments are projected by finding the segments which, after averaging all the columns associated with one cluster label, have more than .6 likelihood of being assigned to the cluster. So, if cluster BB has 5 columns associated with it, these 5 columns are averaged, and for every segment in sigma the algorithm looks if in that segment has a likelihood higher than .6 in that averaged matrix column.
+
+
+	Update grammar
+
+New constraints always enter the grammar with 0 weight - and old constraints keep the weights they were previously assigned as pre-optimization weights.
+
+	Compute intersections of feature classes
+
+The grammar must be able to consider constraints in which intersections of phonological classes occupy a slot in the constraint (for instance, *[+labial,+nasal]#). 
+These constraints are made available in the search space by intersecting the sets of segments associated with the newly found clusters, with old and new clusters alike. 
+These intersections (for instance [m] as the intersection of [pbm] (=[+labial]) and [mnq] (=[+nasal])) are entered into the search space for new constraints along with the newly found clusters themselves.
