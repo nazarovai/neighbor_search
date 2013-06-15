@@ -754,7 +754,7 @@ if ( length(new_cluster) > 0 ) { #If there are any new clusters
 		intersection1 <- intersect(rowcontents.2[[1]], rowcontents.2[[2]]) 
 
 		#Now, if the third reg. expression is non-empty, then compute the intersection of the first two reg.exp and the third reg. exp; otherwise, do nothing
-		if (length(reg3char) > 0) { intersection2 <- intersect(intersection1, rowcontents.2[[3]]) } else { intersection2 <- intersection1 }
+		if (length(rowcontents.2[[3]]) > 0) { intersection2 <- intersect(intersection1, rowcontents.2[[3]]) } else { intersection2 <- intersection1 }
 
 		#If the resulting intersection is non-null, paste it together as a regular expression
 		if (length(intersection2) > 0) {
